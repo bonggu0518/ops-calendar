@@ -170,7 +170,9 @@ form.f { padding: 16px 20px 20px; display: grid; grid-template-columns: 1fr 1fr;
 .cats span { display: inline-block; border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font-size: 13px; background: var(--bg); cursor: pointer; }
 .cats input:checked + span { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
 .cats input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
-.check { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.check { display: flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
+.fld > label.check { color: var(--fg); font-size: 13px; font-weight: 500; cursor: pointer; }
+.check input[type=checkbox], .fld .check input[type=checkbox] { width: 16px; height: 16px; flex: none; margin: 0; padding: 0; }
 .err { grid-column: 1 / -1; color: var(--danger); font-size: 13px; min-height: 0; }
 .foot { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; padding-top: 4px; }
 .foot .spacer { flex: 1; }
@@ -227,6 +229,7 @@ form.f { padding: 16px 20px 20px; display: grid; grid-template-columns: 1fr 1fr;
         <button id="vList" aria-pressed="false">목록</button>
       </div>
       <button class="btn primary" id="newBtn">+ 일정 등록</button>
+      <button class="btn" id="logoutBtn" hidden>로그아웃</button>
     </div>
   </header>
 
@@ -341,6 +344,12 @@ const API_URL = "https://script.google.com/macros/s/AKfycbzlMcwfzmcxbn5hX7-LPZpK
 
 const ABSENT = ["연차", "반차", "병가"];
 const AWAY = ["출장", "외근"];
+// 팀별 기본 담당자: 일정 등록 시 팀을 고르면 담당자 칸에 자동으로 들어갑니다 (직접 고쳐 쓸 수 있음)
+// 구글 시트 '설정' 시트 C열에 적으면 그 값이 우선합니다.
+const TEAM_LEADERS = {
+  "생산기획팀": "고봉규 차장", "생산팀": "김영삼 부장", "관리팀": "송정환 차장", "공무팀": "임상준 부장",
+  "알랭뒤카스생산팀": "김기도 부장", "환경팀": "이봉주 과장", "생산운영본부장": "장형규 상무"
+};
 const FALLBACK_COLORS = ["#2f6fde", "#e0782b", "#1f9d6a", "#9b51e0", "#d2416e", "#0e9bb0", "#b8860b", "#6b7a8f"];
 
 // 공휴일 (대체공휴일 포함). 필요하면 여기에 추가하세요.
@@ -397,8 +406,8 @@ const Demo = (() => {
   let mem = null;
   const teams = [
     { name: "생산기획팀", color: "#2f6fde" }, { name: "생산팀", color: "#e0782b" },
-    { name: "생산물류팀", color: "#1f9d6a" }, { name: "품질관리팀", color: "#9b51e0" },
-    { name: "공무팀", color: "#d2416e" }
+    { name: "관리팀", color: "#1f9d6a" }, { name: "공무팀", color: "#9b51e0" },
+    { name: "알랭뒤카스생산팀", color: "#d2416e" }, { name: "환경팀" }, { name: "생산운영본부장" }
   ];
   const categories = ["미팅", "출장", "외근", "교육", "행사", "연차", "반차", "병가", "기타"];
   function seed() {
@@ -406,20 +415,20 @@ const Demo = (() => {
     const d = (day) => ymd(new Date(y, m, day));
     const t = ymd(now);
     const rows = [
-      ["생산기획팀", "미팅", "주간업무보고 회의", "본부 팀장", d(6), d(6), "09:00", "10:00", "본사 3층 회의실"],
+      ["생산기획팀", "미팅", "주간업무보고 회의", "각 팀장", d(6), d(6), "09:00", "10:00", "본사 3층 회의실"],
       ["생산기획팀", "출장", "성수매장 생두 협의", "김민준", d(8), d(9), "", "", "서울 성수"],
       ["생산팀", "연차", "", "이서연", d(12), d(13), "", "", ""],
-      ["품질관리팀", "교육", "HACCP 정기 위생교육", "박지호", d(14), d(14), "13:00", "17:00", "교육장"],
+      ["환경팀", "교육", "HACCP 정기 위생교육", "박지호", d(14), d(14), "13:00", "17:00", "교육장"],
       ["공무팀", "외근", "LPG 저장탱크 현장 실사", "최도윤", d(15), d(15), "10:00", "15:00", "공급사 현장"],
-      ["생산물류팀", "미팅", "코스트코 행사 물량 협의", "정하은", d(16), d(16), "14:00", "15:30", "화상회의"],
+      ["관리팀", "미팅", "코스트코 행사 물량 협의", "정하은", d(16), d(16), "14:00", "15:30", "화상회의"],
       ["생산팀", "병가", "", "한지우", d(19), d(20), "", "", ""],
-      ["생산기획팀", "미팅", "월간 실적 리뷰 본부장 보고", "김민준", d(21), d(21), "10:00", "11:00", "본부장실"],
-      ["품질관리팀", "출장", "생두 공급사 품질 점검", "박지호", d(21), d(23), "", "", "부산"],
-      ["생산물류팀", "반차", "오후 반차", "오세린", t, t, "13:00", "18:00", ""],
+      ["생산기획팀", "미팅", "월간 실적 리뷰 본부장 보고", "고봉규 차장", d(21), d(21), "10:00", "11:00", "본부장실"],
+      ["환경팀", "출장", "생두 공급사 품질 점검", "박지호", d(21), d(23), "", "", "부산"],
+      ["관리팀", "반차", "오후 반차", "오세린", t, t, "13:00", "18:00", ""],
       ["공무팀", "연차", "", "최도윤", t, t, "", "", ""],
-      ["생산기획팀", "행사", "경영위원회", "본부장", d(27), d(27), "09:30", "12:00", "대회의실"],
+      ["생산운영본부장", "행사", "경영위원회", "장형규 상무", d(27), d(27), "09:30", "12:00", "대회의실"],
       ["생산팀", "미팅", "로스터기 TT240 점검 일정 조율", "이서연", d(28), d(28), "15:00", "16:00", "로스팅실"],
-      ["생산물류팀", "출장", "물류센터 재고 실사", "정하은", d(29), d(30), "", "", "이천"]
+      ["관리팀", "출장", "물류센터 재고 실사", "정하은", d(29), d(30), "", "", "이천"]
     ];
     return rows.map((r, i) => ({
       id: "demo" + i, team: r[0], category: r[1], title: r[2], person: r[3], start: r[4], end: r[5],
@@ -469,6 +478,13 @@ const teamColor = name => {
   const i = state.teams.findIndex(t => t.name === name);
   if (i < 0) return "#7a8594";
   return state.teams[i].color || FALLBACK_COLORS[i % FALLBACK_COLORS.length];
+};
+const norm = s => String(s || "").replace(/\s+/g, "");
+const leaderOf = name => {
+  const t = state.teams.find(x => x.name === name);
+  if (t && t.leader) return t.leader;
+  const k = Object.keys(TEAM_LEADERS).find(k => norm(k) === norm(name));
+  return k ? TEAM_LEADERS[k] : "";
 };
 const visible = e => !state.hiddenTeams.has(e.team) && !state.hiddenCats.has(e.category);
 const timeText = e => e.startTime ? `${e.startTime}${e.endTime ? "~" + e.endTime : ""}` : "";
@@ -652,6 +668,8 @@ function openForm(ev, day) {
   const e = ev || { team: store.get("opscal.team") || state.teams[0]?.name || "", category: "", title: "", person: "",
     start: day || state.selected, end: day || state.selected, startTime: "", endTime: "", location: "", memo: "",
     author: store.get("opscal.author") || "" };
+  if (!ev && !e.person) e.person = leaderOf(e.team);
+  state.formTeam = e.team;
   $("mTitle").textContent = ev ? "일정 수정" : "일정 등록";
   $("fTeam").innerHTML = state.teams.map(t => `<option ${t.name === e.team ? "selected" : ""}>${esc(t.name)}</option>`).join("");
   $("fCats").innerHTML = state.categories.map((c, i) =>
@@ -670,6 +688,11 @@ function openForm(ev, day) {
 }
 function closeForm() { $("overlay").hidden = true; state.editing = null; }
 
+$("fTeam").onchange = () => {
+  const cur = $("fPerson").value.trim();
+  if (!cur || cur === leaderOf(state.formTeam)) $("fPerson").value = leaderOf($("fTeam").value);
+  state.formTeam = $("fTeam").value;
+};
 $("fAllDay").onchange = () => {
   const on = $("fAllDay").checked;
   $("tStartWrap").hidden = $("tEndWrap").hidden = on;
@@ -761,6 +784,12 @@ $("grid").addEventListener("keydown", e => {
 });
 
 /* ===== 비밀번호 ===== */
+$("logoutBtn").onclick = () => {
+  store.del("opscal.pw"); store.sdel("opscal.pw");
+  state.password = ""; state.events = [];
+  closeForm(); renderAll();
+  showGate("로그아웃했습니다.");
+};
 function showGate(msg) {
   $("gate").hidden = false; $("gateErr").textContent = msg || "";
   setTimeout(() => $("gatePw").focus(), 30);
@@ -784,6 +813,7 @@ async function start() {
   try {
     const cfg = await api("config");
     state.teams = cfg.teams || []; state.categories = cfg.categories || [];
+    $("logoutBtn").hidden = !API_URL;
   } catch (err) {
     if (err.code === "AUTH") return showGate("");
     toast(err.message);
