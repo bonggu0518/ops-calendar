@@ -90,14 +90,14 @@ button { cursor: pointer; }
 .filters .hint { font-size: 11.5px; color: var(--muted); }
 .chip .n { font-size: 11px; color: var(--muted); min-width: 1ch; }
 .chip.all[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-.chip.all[aria-pressed="false"], .chip.preset[aria-pressed="false"] { opacity: 1; text-decoration: none; }
 .chip.preset { border-style: dashed; }
 .chip.preset[aria-pressed="true"] { border-style: solid; border-color: var(--accent); color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
 .chip { user-select: none; -webkit-user-select: none; }
 @media (max-width: 640px) { .filters .label { width: 100%; } .filters .sep { display: none; } }
 .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 10px; font-size: 13px; }
 .chip .sw { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
-.chip[aria-pressed="false"] { opacity: .45; text-decoration: line-through; }
+.chip[data-v][aria-pressed="true"] { border-color: var(--c, var(--accent)); background: color-mix(in srgb, var(--c, var(--accent)) 16%, var(--surface)); font-weight: 600; }
+.group.filtering .chip[data-v][aria-pressed="false"] { opacity: .45; }
 
 /* 본문 */
 .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 12px; align-items: start; }
@@ -259,7 +259,7 @@ form.f { padding: 16px 20px 20px; display: grid; grid-template-columns: 1fr 1fr;
       <button class="chip preset" id="presetAway" aria-pressed="false">출장·외근만</button>
       <span class="sep"></span>
     </div>
-    <div class="hint">한 번 클릭하면 켜고 끄기, 더블클릭하면 그 항목만 보기. 숫자는 이번 달 일정 건수입니다.</div>
+    <div class="hint">누르면 그 팀(구분)만 보입니다. 여러 개를 이어서 누르면 함께 보이고, 다시 누르면 빠집니다. 숫자는 이번 달 일정 건수입니다.</div>
   </div>
 
   <main class="layout">
@@ -554,11 +554,13 @@ function renderFilters() {
   const inMonth = state.events.filter(e => e.start <= mTo && e.end >= mFrom);
   document.querySelectorAll(".filters .chip[data-v]").forEach(b => {
     const isTeam = b.dataset.kind === "t", set = isTeam ? state.hiddenTeams : state.hiddenCats;
-    b.setAttribute("aria-pressed", String(!set.has(b.dataset.v)));
+    b.setAttribute("aria-pressed", String(set.size > 0 && !set.has(b.dataset.v)));
     const n = inMonth.filter(e => (isTeam ? e.team : e.category) === b.dataset.v).length;
     b.querySelector(".n").textContent = n ? n : "";
     b.title = isTeam ? `${b.dataset.v} · 이번 달 ${n}건` : `${b.dataset.v} · 이번 달 ${n}건`;
   });
+  $("teamFilter").classList.toggle("filtering", state.hiddenTeams.size > 0);
+  $("catFilter").classList.toggle("filtering", state.hiddenCats.size > 0);
   $("allTeams").setAttribute("aria-pressed", String(state.hiddenTeams.size === 0));
   $("allCats").setAttribute("aria-pressed", String(state.hiddenCats.size === 0));
   const shown = state.categories.filter(c => !state.hiddenCats.has(c));
@@ -580,13 +582,18 @@ function only(kind, keep) {
   saveFilters();
 }
 const filtersEl = document.querySelector(".filters");
+// 전체 상태에서 누르면 그것만 표시, 이후 누르는 항목은 추가·제외
+function pick(kind, v) {
+  const set = kind === "t" ? state.hiddenTeams : state.hiddenCats;
+  const all = kind === "t" ? state.teams.map(t => t.name) : state.categories;
+  if (set.size === 0) return only(kind, [v]);
+  if (set.has(v)) set.delete(v);
+  else { set.add(v); if (set.size >= all.length) set.clear(); }
+  saveFilters();
+}
 filtersEl.addEventListener("click", e => {
   const b = e.target.closest(".chip[data-v]");
-  if (b) toggle(b.dataset.kind === "t" ? state.hiddenTeams : state.hiddenCats, b.dataset.v);
-});
-filtersEl.addEventListener("dblclick", e => {
-  const b = e.target.closest(".chip[data-v]");
-  if (b) { only(b.dataset.kind, [b.dataset.v]); toast(`${b.dataset.v}만 표시합니다. 다시 보려면 [전체]를 누르세요.`); }
+  if (b) pick(b.dataset.kind, b.dataset.v);
 });
 $("allTeams").onclick = () => { state.hiddenTeams.clear(); saveFilters(); };
 $("allCats").onclick = () => { state.hiddenCats.clear(); saveFilters(); };
