@@ -83,9 +83,18 @@ button { cursor: pointer; }
 .stat.zero { color: var(--muted); }
 
 /* 필터 */
-.filters { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.filters { display: flex; flex-direction: column; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
 .filters .group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.filters .label { font-size: 12px; color: var(--muted); letter-spacing: .04em; margin-right: 2px; }
+.filters .label { font-size: 12px; font-weight: 600; color: var(--muted); width: 78px; flex: none; }
+.filters .sep { width: 1px; height: 18px; background: var(--line); margin: 0 4px; }
+.filters .hint { font-size: 11.5px; color: var(--muted); }
+.chip .n { font-size: 11px; color: var(--muted); min-width: 1ch; }
+.chip.all[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.chip.all[aria-pressed="false"], .chip.preset[aria-pressed="false"] { opacity: 1; text-decoration: none; }
+.chip.preset { border-style: dashed; }
+.chip.preset[aria-pressed="true"] { border-style: solid; border-color: var(--accent); color: var(--accent); font-weight: 600; background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
+.chip { user-select: none; -webkit-user-select: none; }
+@media (max-width: 640px) { .filters .label { width: 100%; } .filters .sep { display: none; } }
 .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 10px; font-size: 13px; }
 .chip .sw { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
 .chip[aria-pressed="false"] { opacity: .45; text-decoration: line-through; }
@@ -238,8 +247,19 @@ form.f { padding: 16px 20px 20px; display: grid; grid-template-columns: 1fr 1fr;
   <div class="today-strip" id="todayStrip"></div>
 
   <div class="filters">
-    <div class="group" id="teamFilter"><span class="label">팀</span></div>
-    <div class="group" id="catFilter"><span class="label">구분</span></div>
+    <div class="group" id="teamFilter">
+      <span class="label">표시할 팀</span>
+      <button class="chip all" id="allTeams" aria-pressed="true">전체</button>
+      <span class="sep"></span>
+    </div>
+    <div class="group" id="catFilter">
+      <span class="label">표시할 구분</span>
+      <button class="chip all" id="allCats" aria-pressed="true">전체</button>
+      <button class="chip preset" id="presetAbsent" aria-pressed="false">휴가·병가만</button>
+      <button class="chip preset" id="presetAway" aria-pressed="false">출장·외근만</button>
+      <span class="sep"></span>
+    </div>
+    <div class="hint">한 번 클릭하면 켜고 끄기, 더블클릭하면 그 항목만 보기. 숫자는 이번 달 일정 건수입니다.</div>
   </div>
 
   <main class="layout">
@@ -510,31 +530,68 @@ function gridRange() {
   return { start, end: addDays(start, weeks * 7 - 1), cells: weeks * 7 };
 }
 
-function renderFilters() {
+function buildFilters() {
   const tf = $("teamFilter"), cf = $("catFilter");
-  tf.querySelectorAll(".chip").forEach(n => n.remove());
-  cf.querySelectorAll(".chip").forEach(n => n.remove());
+  tf.querySelectorAll(".chip[data-v]").forEach(n => n.remove());
+  cf.querySelectorAll(".chip[data-v]").forEach(n => n.remove());
   state.teams.forEach(t => {
     const b = document.createElement("button");
-    b.className = "chip"; b.style.setProperty("--c", teamColor(t.name));
-    b.setAttribute("aria-pressed", String(!state.hiddenTeams.has(t.name)));
-    b.innerHTML = `<span class="sw"></span>${esc(t.name)}`;
-    b.onclick = () => { toggle(state.hiddenTeams, t.name); };
+    b.className = "chip"; b.dataset.kind = "t"; b.dataset.v = t.name;
+    b.style.setProperty("--c", teamColor(t.name));
+    b.innerHTML = `<span class="sw"></span>${esc(t.name)}<span class="n"></span>`;
     tf.appendChild(b);
   });
   state.categories.forEach(c => {
     const b = document.createElement("button");
-    b.className = "chip"; b.setAttribute("aria-pressed", String(!state.hiddenCats.has(c)));
-    b.textContent = c;
-    b.onclick = () => { toggle(state.hiddenCats, c); };
+    b.className = "chip"; b.dataset.kind = "c"; b.dataset.v = c;
+    b.innerHTML = `${esc(c)}<span class="n"></span>`;
     cf.appendChild(b);
   });
 }
-function toggle(set, v) {
-  set.has(v) ? set.delete(v) : set.add(v);
+function sameSet(a, b) { return a.length === b.length && a.every(x => b.includes(x)); }
+function renderFilters() {
+  const mFrom = ymd(new Date(state.year, state.month, 1)), mTo = ymd(new Date(state.year, state.month + 1, 0));
+  const inMonth = state.events.filter(e => e.start <= mTo && e.end >= mFrom);
+  document.querySelectorAll(".filters .chip[data-v]").forEach(b => {
+    const isTeam = b.dataset.kind === "t", set = isTeam ? state.hiddenTeams : state.hiddenCats;
+    b.setAttribute("aria-pressed", String(!set.has(b.dataset.v)));
+    const n = inMonth.filter(e => (isTeam ? e.team : e.category) === b.dataset.v).length;
+    b.querySelector(".n").textContent = n ? n : "";
+    b.title = isTeam ? `${b.dataset.v} · 이번 달 ${n}건` : `${b.dataset.v} · 이번 달 ${n}건`;
+  });
+  $("allTeams").setAttribute("aria-pressed", String(state.hiddenTeams.size === 0));
+  $("allCats").setAttribute("aria-pressed", String(state.hiddenCats.size === 0));
+  const shown = state.categories.filter(c => !state.hiddenCats.has(c));
+  $("presetAbsent").setAttribute("aria-pressed", String(sameSet(shown, state.categories.filter(c => ABSENT.includes(c)))));
+  $("presetAway").setAttribute("aria-pressed", String(sameSet(shown, state.categories.filter(c => AWAY.includes(c)))));
+}
+function saveFilters() {
   store.set("opscal.filters", JSON.stringify({ t: [...state.hiddenTeams], c: [...state.hiddenCats] }));
   renderAll();
 }
+function toggle(set, v) {
+  set.has(v) ? set.delete(v) : set.add(v);
+  saveFilters();
+}
+function only(kind, keep) {
+  const set = kind === "t" ? state.hiddenTeams : state.hiddenCats;
+  const all = kind === "t" ? state.teams.map(t => t.name) : state.categories;
+  set.clear(); all.filter(v => !keep.includes(v)).forEach(v => set.add(v));
+  saveFilters();
+}
+const filtersEl = document.querySelector(".filters");
+filtersEl.addEventListener("click", e => {
+  const b = e.target.closest(".chip[data-v]");
+  if (b) toggle(b.dataset.kind === "t" ? state.hiddenTeams : state.hiddenCats, b.dataset.v);
+});
+filtersEl.addEventListener("dblclick", e => {
+  const b = e.target.closest(".chip[data-v]");
+  if (b) { only(b.dataset.kind, [b.dataset.v]); toast(`${b.dataset.v}만 표시합니다. 다시 보려면 [전체]를 누르세요.`); }
+});
+$("allTeams").onclick = () => { state.hiddenTeams.clear(); saveFilters(); };
+$("allCats").onclick = () => { state.hiddenCats.clear(); saveFilters(); };
+$("presetAbsent").onclick = () => only("c", ABSENT);
+$("presetAway").onclick = () => only("c", AWAY);
 
 function renderToday() {
   const t = ymd(new Date());
@@ -814,6 +871,7 @@ async function start() {
     const cfg = await api("config");
     state.teams = cfg.teams || []; state.categories = cfg.categories || [];
     $("logoutBtn").hidden = !API_URL;
+    buildFilters();
   } catch (err) {
     if (err.code === "AUTH") return showGate("");
     toast(err.message);
