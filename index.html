@@ -70,7 +70,12 @@ button { cursor: pointer; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--surface); }
 .seg button { border: 0; background: none; padding: 7px 12px; }
 .seg button[aria-pressed="true"] { background: var(--surface-2); font-weight: 600; }
-.actions { display: flex; gap: 8px; align-items: center; }
+.actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sync { display: inline-flex; align-items: center; gap: 6px; }
+.sync small { color: var(--muted); font-size: 12px; white-space: nowrap; }
+#refreshBtn .ic { display: inline-block; }
+#refreshBtn.spin .ic { animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .demo { border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--line)); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); border-radius: var(--r); padding: 8px 12px; font-size: 13px; color: var(--muted); }
 .demo b { color: var(--fg); }
@@ -250,6 +255,7 @@ form.f { padding: 16px 20px 20px; display: grid; grid-template-columns: 1fr 1fr;
         <button id="vList" aria-pressed="false">목록</button>
       </div>
       <button class="btn primary" id="newBtn">+ 일정 등록</button>
+      <span class="sync"><button class="btn" id="refreshBtn" title="다른 사람이 등록한 일정까지 다시 불러옵니다"><span class="ic">↻</span> 새로고침</button><small id="syncTime"></small></span>
       <button class="btn" id="logoutBtn" hidden>로그아웃</button>
     </div>
   </header>
@@ -717,21 +723,42 @@ function renderAll() {
 }
 
 /* ===== 데이터 불러오기 ===== */
-async function load() {
+let loadSeq = 0;
+async function load(silent) {
   const { start, end } = gridRange();
   const t = ymd(new Date());
   const from = [ymd(start), t].sort()[0], to = [ymd(end), t].sort()[1];
-  $("loading").hidden = false;
+  const seq = ++loadSeq;
+  if (!silent) $("loading").hidden = false;
+  $("refreshBtn").classList.add("spin");
   try {
-    state.events = await api("list", { from, to });
+    const list = await api("list", { from, to });
+    if (seq !== loadSeq) return; // 그 사이 달을 옮긴 경우 이전 결과는 버림
+    state.events = list;
+    const n = new Date();
+    $("syncTime").textContent = `${pad(n.getHours())}:${pad(n.getMinutes())} 기준`;
   } catch (err) {
     if (err.code === "AUTH") return showGate("비밀번호가 바뀌었거나 맞지 않습니다.");
-    toast(err.message);
+    if (!silent) toast(err.message);
   } finally {
-    $("loading").hidden = true;
+    if (seq === loadSeq) { $("loading").hidden = true; $("refreshBtn").classList.remove("spin"); }
   }
   renderAll();
 }
+
+// 자동 새로고침: 화면을 켜 둔 동안 2분마다, 다른 창에 있다가 돌아왔을 때 바로
+const AUTO_REFRESH_MS = 2 * 60 * 1000;
+let lastLoad = 0;
+async function refresh(silent) {
+  if (!$("gate").hidden) return;
+  lastLoad = Date.now();
+  await load(silent);
+}
+$("refreshBtn").onclick = () => refresh(false).then(() => toast("최신 일정으로 새로고침했습니다."));
+setInterval(() => { if (document.visibilityState === "visible" && $("overlay").hidden) refresh(true); }, AUTO_REFRESH_MS);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && Date.now() - lastLoad > 30 * 1000) refresh(true);
+});
 
 function go(delta) {
   const d = new Date(state.year, state.month + delta, 1);
