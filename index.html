@@ -111,7 +111,11 @@ button { cursor: pointer; }
 .cell:nth-child(7n) { border-right: 0; }
 .cell.out { background: var(--surface-2); }
 .cell.out .dnum { opacity: .5; }
-.cell.sel { box-shadow: inset 0 0 0 2px var(--accent); }
+.cell.sel { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--fg) 45%, transparent); }
+.cell.today { background: color-mix(in srgb, var(--accent) 11%, var(--surface)); box-shadow: inset 0 0 0 2px var(--accent); }
+.cell.today.sel { box-shadow: inset 0 0 0 3px var(--accent); }
+.tbadge { font-size: 10.5px; font-weight: 700; color: var(--accent-ink); background: var(--accent); border-radius: 4px; padding: 1px 5px; flex: none; }
+.list .day.today { background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
 .cell:hover .add { opacity: 1; }
 .dhead { display: flex; align-items: center; gap: 4px; padding: 0 2px; min-width: 0; }
 .dnum { font-size: 13px; font-weight: 600; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; flex: none; }
@@ -194,6 +198,14 @@ form.f { padding: 16px 20px 20px; display: grid; grid-template-columns: 1fr 1fr;
 .gate p { margin: 0; color: var(--muted); font-size: 13px; }
 .gate input[type=password] { border: 1px solid var(--line); background: var(--bg); border-radius: var(--r); padding: 10px 12px; }
 
+.tip { position: fixed; z-index: 45; width: max-content; max-width: min(320px, calc(100vw - 24px)); background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-left: 5px solid var(--c); border-radius: 8px; box-shadow: 0 10px 28px rgba(0,0,0,.18); padding: 10px 14px; pointer-events: none; display: flex; flex-direction: column; gap: 3px; }
+.tip .tp1 { font-size: 12.5px; color: var(--muted); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.tip .tp1 b { color: var(--fg); }
+.tip .tp1 .tag { border: 1px solid var(--c); border-radius: 4px; padding: 0 6px; font-size: 12px; color: var(--fg); }
+.tip .tp2 { font-size: 16px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
+.tip .tp3 { font-size: 13.5px; overflow-wrap: anywhere; }
+.tip .tp3 span { color: var(--muted); display: inline-block; min-width: 34px; }
+.tip .tp4 { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 9px 16px; border-radius: 8px; font-size: 13px; z-index: 70; max-width: calc(100% - 32px); }
 .loading { position: absolute; inset: 0; background: color-mix(in srgb, var(--surface) 60%, transparent); display: grid; place-items: center; color: var(--muted); font-size: 13px; z-index: 2; }
 .cal { position: relative; }
@@ -205,7 +217,7 @@ form.f { padding: 16px 20px 20px; display: grid; grid-template-columns: 1fr 1fr;
 }
 @media (max-width: 640px) {
   .cell { min-height: 58px; padding: 3px 2px; }
-  .ev, .more, .hname, .add { display: none; }
+  .ev, .more, .hname, .add, .tbadge { display: none; }
   .dots { display: flex; }
   .dnum { font-size: 12px; width: 22px; height: 22px; }
   .dow div { padding: 6px 4px; text-align: center; }
@@ -355,6 +367,7 @@ form.f { padding: 16px 20px 20px; display: grid; grid-template-columns: 1fr 1fr;
   </form>
 </div>
 
+<div class="tip" id="tip" role="tooltip" hidden></div>
 <div class="toast" id="toast" hidden></div>
 
 <script>
@@ -620,8 +633,8 @@ function chipHtml(e, day) {
   if (e.start < day && day.slice(0) !== e.start) cls.push("cont");
   if (ABSENT.includes(e.category)) cls.push("absent");
   const tt = timeText(e);
-  const title = `${e.team} · ${e.category}${tt ? " · " + tt : ""}\n${label(e)}`;
-  return `<button class="${cls.join(" ")}" style="--c:${teamColor(e.team)}" data-id="${esc(e.id)}" title="${esc(title)}"><span class="cat">${esc(e.category)}</span>${esc(label(e))}</button>`;
+  const title = `${e.team} ${e.category} ${tt} ${label(e)}`;
+  return `<button class="${cls.join(" ")}" style="--c:${teamColor(e.team)}" data-id="${esc(e.id)}" aria-label="${esc(title)}"><span class="cat">${esc(e.category)}</span>${esc(label(e))}</button>`;
 }
 
 function renderMonth() {
@@ -641,7 +654,7 @@ function renderMonth() {
     const max = 3;
     const shown = list.slice(0, list.length > max ? max - 1 : max);
     html.push(`<div class="${cls.join(" ")}" data-day="${key}" role="button" tabindex="0" aria-label="${d.getMonth() + 1}월 ${d.getDate()}일, 일정 ${list.length}건">
-      <div class="dhead"><span class="dnum">${d.getDate()}</span>${HOLIDAYS[key] ? `<span class="hname">${esc(HOLIDAYS[key])}</span>` : ""}<button class="add" data-add="${key}" aria-label="${d.getMonth() + 1}월 ${d.getDate()}일 일정 등록">+</button></div>
+      <div class="dhead"><span class="dnum">${d.getDate()}</span>${key === today ? `<span class="tbadge">오늘</span>` : ""}${HOLIDAYS[key] ? `<span class="hname">${esc(HOLIDAYS[key])}</span>` : ""}<button class="add" data-add="${key}" aria-label="${d.getMonth() + 1}월 ${d.getDate()}일 일정 등록">+</button></div>
       ${shown.map(e => chipHtml(e, key)).join("")}
       ${list.length > shown.length ? `<span class="more">+${list.length - shown.length}건 더</span>` : ""}
       <div class="dots">${list.slice(0, 6).map(e => `<i style="--c:${teamColor(e.team)}"></i>`).join("")}</div>
@@ -687,7 +700,7 @@ function renderList() {
     if (d.getDay() === 6) cls.push("sat");
     if (HOLIDAYS[key]) cls.push("hol");
     if (key === today) cls.push("today");
-    out.push(`<div class="day"><div class="${cls.join(" ")}">${d.getMonth() + 1}/${d.getDate()} (${DOW[d.getDay()]})<small>${esc(HOLIDAYS[key] || (key === today ? "오늘" : ""))}</small></div><div>${list.map(itemHtml).join("")}</div></div>`);
+    out.push(`<div class="day${key === today ? " today" : ""}"><div class="${cls.join(" ")}">${d.getMonth() + 1}/${d.getDate()} (${DOW[d.getDay()]})<small>${esc(HOLIDAYS[key] || (key === today ? "오늘" : ""))}</small></div><div>${list.map(itemHtml).join("")}</div></div>`);
   }
   $("listView").innerHTML = out.length ? out.join("") : `<div class="empty">이번 달에 표시할 일정이 없습니다.</div>`;
 }
@@ -848,6 +861,37 @@ $("grid").addEventListener("keydown", e => {
   const cell = e.target.closest(".cell");
   if (cell && e.target === cell && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); state.selected = cell.dataset.day; renderMonth(); renderSide(); }
 });
+
+/* ===== 일정 미리보기 (마우스를 올렸을 때) ===== */
+const tip = $("tip");
+const md = s => `${Number(s.slice(5, 7))}월 ${Number(s.slice(8))}일(${DOW[parse(s).getDay()]})`;
+function showTip(chip) {
+  const e = findEvent(chip.dataset.id); if (!e) return;
+  const rows = [];
+  rows.push(`<div class="tp3"><span>날짜</span>${md(e.start)}${e.end > e.start ? " ~ " + md(e.end) : ""}</div>`);
+  if (e.startTime) rows.push(`<div class="tp3"><span>시간</span>${esc(timeText(e))}</div>`);
+  if (e.location) rows.push(`<div class="tp3"><span>장소</span>${esc(e.location)}</div>`);
+  if (e.memo) rows.push(`<div class="tp3"><span>메모</span>${esc(e.memo)}</div>`);
+  tip.style.setProperty("--c", teamColor(e.team));
+  tip.innerHTML = `<div class="tp1"><b>${esc(e.team)}</b><span class="tag">${esc(e.category)}</span>${e.person && e.title ? esc(e.person) : ""}</div>
+    <div class="tp2">${esc(e.title || e.person || e.category)}</div>${rows.join("")}
+    <div class="tp4">클릭하면 수정할 수 있습니다</div>`;
+  tip.hidden = false;
+  const r = chip.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = Math.min(Math.max(8, r.left), window.innerWidth - w - 8);
+  let y = r.bottom + 6;
+  if (y + h > window.innerHeight - 8) y = Math.max(8, r.top - h - 6);
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+const hideTip = () => { tip.hidden = true; };
+if (window.matchMedia("(hover: hover)").matches) {
+  document.addEventListener("mouseover", ev => {
+    const chip = ev.target.closest(".ev[data-id]");
+    if (chip) showTip(chip); else if (!tip.hidden) hideTip();
+  });
+  window.addEventListener("scroll", hideTip, true);
+  document.addEventListener("mousedown", hideTip);
+}
 
 /* ===== 비밀번호 ===== */
 $("logoutBtn").onclick = () => {
