@@ -370,6 +370,8 @@ const TEAM_LEADERS = {
   "생산기획팀": "고봉규 차장", "생산팀": "김영삼 부장", "관리팀": "송정환 차장", "공무팀": "임상준 부장",
   "알랭뒤카스생산팀": "김기도 부장", "환경팀": "이봉주 과장", "생산운영본부장": "장형규 상무"
 };
+// 팀 표시 순서 (필터·등록 화면·같은 날 일정 정렬에 모두 적용). 여기에 없는 팀은 맨 뒤에 붙습니다.
+const TEAM_ORDER = ["생산운영본부장", "생산팀", "알랭뒤카스생산팀", "공무팀", "관리팀", "환경팀", "생산기획팀"];
 const FALLBACK_COLORS = ["#2f6fde", "#e0782b", "#1f9d6a", "#9b51e0", "#d2416e", "#0e9bb0", "#b8860b", "#6b7a8f"];
 
 // 공휴일 (대체공휴일 포함). 필요하면 여기에 추가하세요.
@@ -876,7 +878,12 @@ $("gateForm").onsubmit = async (e) => {
 async function start() {
   try {
     const cfg = await api("config");
-    state.teams = cfg.teams || []; state.categories = cfg.categories || [];
+    const rank = n => { const i = TEAM_ORDER.findIndex(x => norm(x) === norm(n)); return i < 0 ? 999 : i; };
+    state.teams = (cfg.teams || [])
+      .map((t, i) => ({ ...t, color: t.color || FALLBACK_COLORS[i % FALLBACK_COLORS.length] }))
+      .map((t, i) => ({ ...t, _i: i }))
+      .sort((a, b) => rank(a.name) - rank(b.name) || a._i - b._i);
+    state.categories = cfg.categories || [];
     $("logoutBtn").hidden = !API_URL;
     buildFilters();
   } catch (err) {
